@@ -1,9 +1,9 @@
 // Generate a military suspense intro sound as a WAV file using raw audio synthesis
-import { writeFileSync } from 'fs'
+import { writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 
 const SAMPLE_RATE = 44100
-const DURATION = 4.5 // seconds
+const DURATION = 4.5
 const NUM_SAMPLES = Math.floor(SAMPLE_RATE * DURATION)
 const NUM_CHANNELS = 1
 const BITS_PER_SAMPLE = 16
@@ -16,7 +16,6 @@ for (let i = 0; i < NUM_SAMPLES; i++) {
   const env = Math.min(t / 1.5, 1) * Math.max(0, 1 - (t - 3.5) / 1.0)
   const freq = 40 + 30 * (t / DURATION)
   samples[i] += Math.sin(2 * Math.PI * freq * t) * 0.25 * env
-  // Sub harmonic
   samples[i] += Math.sin(2 * Math.PI * (freq * 0.5) * t) * 0.15 * env
 }
 
@@ -28,22 +27,19 @@ for (let i = 0; i < NUM_SAMPLES; i++) {
   samples[i] += Math.sin(2 * Math.PI * freq * t) * 0.08 * env
 }
 
-// Layer 3: Stinger hit at ~2.5s (impact moment when title appears)
+// Layer 3: Stinger hit at ~1.8s (impact moment when title appears)
 for (let i = 0; i < NUM_SAMPLES; i++) {
   const t = i / SAMPLE_RATE
   const hitTime = t - 1.8
   if (hitTime > 0 && hitTime < 1.5) {
     const hitEnv = Math.exp(-hitTime * 3) * 0.35
-    // Low impact
     samples[i] += Math.sin(2 * Math.PI * 60 * hitTime) * hitEnv
-    // Mid crack
     samples[i] += Math.sin(2 * Math.PI * 150 * hitTime) * hitEnv * 0.5
-    // High shimmer
     samples[i] += Math.sin(2 * Math.PI * 800 * hitTime) * hitEnv * 0.15
   }
 }
 
-// Layer 4: Second stinger for subtitle at ~3s
+// Layer 4: Second stinger for subtitle at ~2.8s
 for (let i = 0; i < NUM_SAMPLES; i++) {
   const t = i / SAMPLE_RATE
   const hitTime = t - 2.8
@@ -57,7 +53,6 @@ for (let i = 0; i < NUM_SAMPLES; i++) {
 // Layer 5: High-frequency digital beeps/ticks (tactical feel)
 for (let i = 0; i < NUM_SAMPLES; i++) {
   const t = i / SAMPLE_RATE
-  // Series of short beeps
   const beepTimes = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7]
   for (const bt of beepTimes) {
     const dt = t - bt
@@ -68,27 +63,25 @@ for (let i = 0; i < NUM_SAMPLES; i++) {
   }
 }
 
-// Layer 6: Cinematic riser (white-noise filtered sweep)
+// Layer 6: Cinematic riser (noise sweep)
 for (let i = 0; i < NUM_SAMPLES; i++) {
   const t = i / SAMPLE_RATE
   if (t < 2.0) {
     const env = Math.pow(t / 2.0, 3) * 0.06
     const noise = (Math.random() * 2 - 1)
-    // Simple filtered noise approximation
     samples[i] += noise * env
   }
 }
 
-// Layer 7: Resolving chord at end (cinematic resolve, fading)
+// Layer 7: Resolving minor chord at end
 for (let i = 0; i < NUM_SAMPLES; i++) {
   const t = i / SAMPLE_RATE
   const startT = t - 3.2
   if (startT > 0) {
     const env = Math.min(startT / 0.3, 1) * Math.exp(-startT * 1.5) * 0.12
-    // Minor chord feel
-    samples[i] += Math.sin(2 * Math.PI * 130.81 * startT) * env // C3
-    samples[i] += Math.sin(2 * Math.PI * 155.56 * startT) * env * 0.7 // Eb3
-    samples[i] += Math.sin(2 * Math.PI * 196.0 * startT) * env * 0.5 // G3
+    samples[i] += Math.sin(2 * Math.PI * 130.81 * startT) * env
+    samples[i] += Math.sin(2 * Math.PI * 155.56 * startT) * env * 0.7
+    samples[i] += Math.sin(2 * Math.PI * 196.0 * startT) * env * 0.5
   }
 }
 
@@ -107,7 +100,7 @@ for (let i = 0; i < NUM_SAMPLES; i++) {
   pcmData.writeInt16LE(intVal, i * 2)
 }
 
-// WAV header
+// Build WAV header
 const dataSize = pcmData.length
 const headerSize = 44
 const fileSize = headerSize + dataSize
@@ -117,8 +110,8 @@ wav.write('RIFF', 0)
 wav.writeUInt32LE(fileSize - 8, 4)
 wav.write('WAVE', 8)
 wav.write('fmt ', 12)
-wav.writeUInt32LE(16, 16) // chunk size
-wav.writeUInt16LE(1, 20) // PCM
+wav.writeUInt32LE(16, 16)
+wav.writeUInt16LE(1, 20)
 wav.writeUInt16LE(NUM_CHANNELS, 22)
 wav.writeUInt32LE(SAMPLE_RATE, 24)
 wav.writeUInt32LE(SAMPLE_RATE * NUM_CHANNELS * (BITS_PER_SAMPLE / 8), 28)
@@ -128,9 +121,9 @@ wav.write('data', 36)
 wav.writeUInt32LE(dataSize, 40)
 pcmData.copy(wav, 44)
 
-const outPath = join(process.cwd(), 'public', 'sounds', 'intro-suspense.wav')
-import { mkdirSync } from 'fs'
-mkdirSync(join(process.cwd(), 'public', 'sounds'), { recursive: true })
+const outDir = join(process.cwd(), 'public', 'sounds')
+mkdirSync(outDir, { recursive: true })
+const outPath = join(outDir, 'intro-suspense.wav')
 writeFileSync(outPath, wav)
 
 console.log(`Generated intro sound: ${outPath} (${(fileSize / 1024).toFixed(1)} KB)`)
