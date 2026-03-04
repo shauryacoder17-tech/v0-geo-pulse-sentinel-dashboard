@@ -3,21 +3,185 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
+function playMilitaryIntroSound() {
+  try {
+    const ctx = new AudioContext()
+    const masterGain = ctx.createGain()
+    masterGain.gain.setValueAtTime(0.55, ctx.currentTime)
+    masterGain.connect(ctx.destination)
+
+    // 1) Deep cinematic sub-boom
+    const boomOsc = ctx.createOscillator()
+    const boomGain = ctx.createGain()
+    boomOsc.type = 'sine'
+    boomOsc.frequency.setValueAtTime(55, ctx.currentTime)
+    boomOsc.frequency.exponentialRampToValueAtTime(28, ctx.currentTime + 1.5)
+    boomGain.gain.setValueAtTime(0.7, ctx.currentTime)
+    boomGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.5)
+    boomOsc.connect(boomGain)
+    boomGain.connect(masterGain)
+    boomOsc.start(ctx.currentTime)
+    boomOsc.stop(ctx.currentTime + 2.5)
+
+    // 2) Secondary deep hit
+    const hitOsc = ctx.createOscillator()
+    const hitGain = ctx.createGain()
+    hitOsc.type = 'triangle'
+    hitOsc.frequency.setValueAtTime(80, ctx.currentTime + 0.05)
+    hitOsc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 1.0)
+    hitGain.gain.setValueAtTime(0.5, ctx.currentTime + 0.05)
+    hitGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2)
+    hitOsc.connect(hitGain)
+    hitGain.connect(masterGain)
+    hitOsc.start(ctx.currentTime + 0.05)
+    hitOsc.stop(ctx.currentTime + 1.2)
+
+    // 3) Rising tension drone
+    const droneOsc = ctx.createOscillator()
+    const droneGain = ctx.createGain()
+    const droneFilter = ctx.createBiquadFilter()
+    droneOsc.type = 'sawtooth'
+    droneOsc.frequency.setValueAtTime(60, ctx.currentTime + 0.3)
+    droneOsc.frequency.linearRampToValueAtTime(220, ctx.currentTime + 4.0)
+    droneFilter.type = 'lowpass'
+    droneFilter.frequency.setValueAtTime(200, ctx.currentTime + 0.3)
+    droneFilter.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 4.0)
+    droneFilter.Q.setValueAtTime(2, ctx.currentTime)
+    droneGain.gain.setValueAtTime(0, ctx.currentTime)
+    droneGain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 1.5)
+    droneGain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 3.5)
+    droneGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 5.5)
+    droneOsc.connect(droneFilter)
+    droneFilter.connect(droneGain)
+    droneGain.connect(masterGain)
+    droneOsc.start(ctx.currentTime + 0.3)
+    droneOsc.stop(ctx.currentTime + 5.5)
+
+    // 4) Radio static / crackle noise burst
+    const noiseLen = ctx.sampleRate * 3
+    const noiseBuffer = ctx.createBuffer(1, noiseLen, ctx.sampleRate)
+    const noiseData = noiseBuffer.getChannelData(0)
+    for (let i = 0; i < noiseLen; i++) {
+      noiseData[i] = (Math.random() * 2 - 1) * 0.5
+    }
+    const noiseNode = ctx.createBufferSource()
+    noiseNode.buffer = noiseBuffer
+    const noiseGain = ctx.createGain()
+    const noiseFilter = ctx.createBiquadFilter()
+    noiseFilter.type = 'bandpass'
+    noiseFilter.frequency.setValueAtTime(3000, ctx.currentTime)
+    noiseFilter.Q.setValueAtTime(0.8, ctx.currentTime)
+    noiseGain.gain.setValueAtTime(0, ctx.currentTime)
+    noiseGain.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.1)
+    noiseGain.gain.setValueAtTime(0.06, ctx.currentTime + 0.4)
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.0)
+    noiseGain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 1.8)
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 3.0)
+    noiseNode.connect(noiseFilter)
+    noiseFilter.connect(noiseGain)
+    noiseGain.connect(masterGain)
+    noiseNode.start(ctx.currentTime)
+    noiseNode.stop(ctx.currentTime + 3.0)
+
+    // 5) Sonar ping at title reveal
+    const pingDelay = 0.6
+    const pingOsc = ctx.createOscillator()
+    const pingGain = ctx.createGain()
+    pingOsc.type = 'sine'
+    pingOsc.frequency.setValueAtTime(1320, ctx.currentTime + pingDelay)
+    pingGain.gain.setValueAtTime(0.35, ctx.currentTime + pingDelay)
+    pingGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + pingDelay + 1.8)
+    pingOsc.connect(pingGain)
+    pingGain.connect(masterGain)
+    pingOsc.start(ctx.currentTime + pingDelay)
+    pingOsc.stop(ctx.currentTime + pingDelay + 1.8)
+
+    // 6) Second sonar ping for subtitle
+    const ping2Delay = 2.2
+    const ping2Osc = ctx.createOscillator()
+    const ping2Gain = ctx.createGain()
+    ping2Osc.type = 'sine'
+    ping2Osc.frequency.setValueAtTime(1760, ctx.currentTime + ping2Delay)
+    ping2Gain.gain.setValueAtTime(0.2, ctx.currentTime + ping2Delay)
+    ping2Gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ping2Delay + 1.5)
+    ping2Osc.connect(ping2Gain)
+    ping2Gain.connect(masterGain)
+    ping2Osc.start(ctx.currentTime + ping2Delay)
+    ping2Osc.stop(ctx.currentTime + ping2Delay + 1.5)
+
+    // 7) Low rumble / mechanical hum undertone
+    const rumbleOsc = ctx.createOscillator()
+    const rumbleGain = ctx.createGain()
+    rumbleOsc.type = 'sine'
+    rumbleOsc.frequency.setValueAtTime(40, ctx.currentTime)
+    rumbleGain.gain.setValueAtTime(0, ctx.currentTime)
+    rumbleGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.5)
+    rumbleGain.gain.setValueAtTime(0.15, ctx.currentTime + 4.0)
+    rumbleGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 5.8)
+    rumbleOsc.connect(rumbleGain)
+    rumbleGain.connect(masterGain)
+    rumbleOsc.start(ctx.currentTime)
+    rumbleOsc.stop(ctx.currentTime + 5.8)
+
+    // 8) Digital beep sequence (like system boot)
+    const beepTimes = [0.6, 1.4, 2.2, 3.4, 4.2]
+    const beepFreqs = [880, 660, 880, 1100, 1320]
+    beepTimes.forEach((t, i) => {
+      const beepOsc = ctx.createOscillator()
+      const beepGain = ctx.createGain()
+      beepOsc.type = 'square'
+      beepOsc.frequency.setValueAtTime(beepFreqs[i], ctx.currentTime + t)
+      beepGain.gain.setValueAtTime(0.06, ctx.currentTime + t)
+      beepGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.12)
+      beepOsc.connect(beepGain)
+      beepGain.connect(masterGain)
+      beepOsc.start(ctx.currentTime + t)
+      beepOsc.stop(ctx.currentTime + t + 0.15)
+    })
+
+    // 9) Final power-up sweep
+    const sweepOsc = ctx.createOscillator()
+    const sweepGain = ctx.createGain()
+    const sweepFilter = ctx.createBiquadFilter()
+    sweepOsc.type = 'sawtooth'
+    sweepOsc.frequency.setValueAtTime(100, ctx.currentTime + 4.5)
+    sweepOsc.frequency.exponentialRampToValueAtTime(2000, ctx.currentTime + 5.5)
+    sweepFilter.type = 'lowpass'
+    sweepFilter.frequency.setValueAtTime(400, ctx.currentTime + 4.5)
+    sweepFilter.frequency.exponentialRampToValueAtTime(4000, ctx.currentTime + 5.5)
+    sweepGain.gain.setValueAtTime(0, ctx.currentTime + 4.5)
+    sweepGain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 5.0)
+    sweepGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 5.8)
+    sweepOsc.connect(sweepFilter)
+    sweepFilter.connect(sweepGain)
+    sweepGain.connect(masterGain)
+    sweepOsc.start(ctx.currentTime + 4.5)
+    sweepOsc.stop(ctx.currentTime + 5.8)
+
+    // Fade master out at end
+    masterGain.gain.setValueAtTime(0.55, ctx.currentTime + 5.0)
+    masterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 6.2)
+
+    // Close context after all sounds finish
+    setTimeout(() => ctx.close().catch(() => {}), 7000)
+
+    return ctx
+  } catch {
+    return null
+  }
+}
+
 export default function IntroOverlay({ onComplete }: { onComplete: () => void }) {
   const [phase, setPhase] = useState<'boot' | 'title' | 'subtitle' | 'status' | 'exit'>('boot')
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
   const [hasInteracted, setHasInteracted] = useState(false)
 
   const startSequence = useCallback(() => {
     if (hasInteracted) return
     setHasInteracted(true)
 
-    // Play suspense sound
-    try {
-      audioRef.current = new Audio('/sounds/intro-suspense.wav')
-      audioRef.current.volume = 0.6
-      audioRef.current.play().catch(() => {})
-    } catch {}
+    // Play military suspense sound via Web Audio API
+    audioCtxRef.current = playMilitaryIntroSound()
 
     // Phase timeline
     setTimeout(() => setPhase('title'), 600)
@@ -25,19 +189,15 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
     setTimeout(() => setPhase('status'), 3400)
     setTimeout(() => setPhase('exit'), 5400)
     setTimeout(() => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
       onComplete()
     }, 6200)
   }, [hasInteracted, onComplete])
 
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        audioCtxRef.current.close().catch(() => {})
+        audioCtxRef.current = null
       }
     }
   }, [])
