@@ -6,165 +6,305 @@ import { motion, AnimatePresence } from 'framer-motion'
 function playMilitaryIntroSound() {
   try {
     const ctx = new AudioContext()
+    const t = ctx.currentTime
     const masterGain = ctx.createGain()
-    masterGain.gain.setValueAtTime(0.55, ctx.currentTime)
+    masterGain.gain.setValueAtTime(0.7, t)
     masterGain.connect(ctx.destination)
 
-    // 1) Deep cinematic sub-boom
-    const boomOsc = ctx.createOscillator()
-    const boomGain = ctx.createGain()
-    boomOsc.type = 'sine'
-    boomOsc.frequency.setValueAtTime(55, ctx.currentTime)
-    boomOsc.frequency.exponentialRampToValueAtTime(28, ctx.currentTime + 1.5)
-    boomGain.gain.setValueAtTime(0.7, ctx.currentTime)
-    boomGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.5)
-    boomOsc.connect(boomGain)
-    boomGain.connect(masterGain)
-    boomOsc.start(ctx.currentTime)
-    boomOsc.stop(ctx.currentTime + 2.5)
-
-    // 2) Secondary deep hit
-    const hitOsc = ctx.createOscillator()
-    const hitGain = ctx.createGain()
-    hitOsc.type = 'triangle'
-    hitOsc.frequency.setValueAtTime(80, ctx.currentTime + 0.05)
-    hitOsc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 1.0)
-    hitGain.gain.setValueAtTime(0.5, ctx.currentTime + 0.05)
-    hitGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2)
-    hitOsc.connect(hitGain)
-    hitGain.connect(masterGain)
-    hitOsc.start(ctx.currentTime + 0.05)
-    hitOsc.stop(ctx.currentTime + 1.2)
-
-    // 3) Rising tension drone
-    const droneOsc = ctx.createOscillator()
-    const droneGain = ctx.createGain()
-    const droneFilter = ctx.createBiquadFilter()
-    droneOsc.type = 'sawtooth'
-    droneOsc.frequency.setValueAtTime(60, ctx.currentTime + 0.3)
-    droneOsc.frequency.linearRampToValueAtTime(220, ctx.currentTime + 4.0)
-    droneFilter.type = 'lowpass'
-    droneFilter.frequency.setValueAtTime(200, ctx.currentTime + 0.3)
-    droneFilter.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 4.0)
-    droneFilter.Q.setValueAtTime(2, ctx.currentTime)
-    droneGain.gain.setValueAtTime(0, ctx.currentTime)
-    droneGain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 1.5)
-    droneGain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 3.5)
-    droneGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 5.5)
-    droneOsc.connect(droneFilter)
-    droneFilter.connect(droneGain)
-    droneGain.connect(masterGain)
-    droneOsc.start(ctx.currentTime + 0.3)
-    droneOsc.stop(ctx.currentTime + 5.5)
-
-    // 4) Radio static / crackle noise burst
-    const noiseLen = ctx.sampleRate * 3
-    const noiseBuffer = ctx.createBuffer(1, noiseLen, ctx.sampleRate)
-    const noiseData = noiseBuffer.getChannelData(0)
-    for (let i = 0; i < noiseLen; i++) {
-      noiseData[i] = (Math.random() * 2 - 1) * 0.5
+    // --- REVERB CONVOLVER (simulated large hall) ---
+    const convolver = ctx.createConvolver()
+    const reverbLen = ctx.sampleRate * 3
+    const reverbBuf = ctx.createBuffer(2, reverbLen, ctx.sampleRate)
+    for (let ch = 0; ch < 2; ch++) {
+      const d = reverbBuf.getChannelData(ch)
+      for (let i = 0; i < reverbLen; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / reverbLen, 2.5)
+      }
     }
-    const noiseNode = ctx.createBufferSource()
-    noiseNode.buffer = noiseBuffer
-    const noiseGain = ctx.createGain()
-    const noiseFilter = ctx.createBiquadFilter()
-    noiseFilter.type = 'bandpass'
-    noiseFilter.frequency.setValueAtTime(3000, ctx.currentTime)
-    noiseFilter.Q.setValueAtTime(0.8, ctx.currentTime)
-    noiseGain.gain.setValueAtTime(0, ctx.currentTime)
-    noiseGain.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.1)
-    noiseGain.gain.setValueAtTime(0.06, ctx.currentTime + 0.4)
-    noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.0)
-    noiseGain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 1.8)
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 3.0)
-    noiseNode.connect(noiseFilter)
-    noiseFilter.connect(noiseGain)
-    noiseGain.connect(masterGain)
-    noiseNode.start(ctx.currentTime)
-    noiseNode.stop(ctx.currentTime + 3.0)
+    convolver.buffer = reverbBuf
+    const reverbGain = ctx.createGain()
+    reverbGain.gain.setValueAtTime(0.25, t)
+    convolver.connect(reverbGain)
+    reverbGain.connect(masterGain)
 
-    // 5) Sonar ping at title reveal
-    const pingDelay = 0.6
-    const pingOsc = ctx.createOscillator()
-    const pingGain = ctx.createGain()
-    pingOsc.type = 'sine'
-    pingOsc.frequency.setValueAtTime(1320, ctx.currentTime + pingDelay)
-    pingGain.gain.setValueAtTime(0.35, ctx.currentTime + pingDelay)
-    pingGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + pingDelay + 1.8)
-    pingOsc.connect(pingGain)
-    pingGain.connect(masterGain)
-    pingOsc.start(ctx.currentTime + pingDelay)
-    pingOsc.stop(ctx.currentTime + pingDelay + 1.8)
+    // Helper: connect dry + wet (reverb)
+    const dryWet = (node: AudioNode, gain: GainNode) => {
+      node.connect(gain)
+      gain.connect(masterGain)
+      node.connect(convolver)
+    }
 
-    // 6) Second sonar ping for subtitle
-    const ping2Delay = 2.2
-    const ping2Osc = ctx.createOscillator()
-    const ping2Gain = ctx.createGain()
-    ping2Osc.type = 'sine'
-    ping2Osc.frequency.setValueAtTime(1760, ctx.currentTime + ping2Delay)
-    ping2Gain.gain.setValueAtTime(0.2, ctx.currentTime + ping2Delay)
-    ping2Gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ping2Delay + 1.5)
-    ping2Osc.connect(ping2Gain)
-    ping2Gain.connect(masterGain)
-    ping2Osc.start(ctx.currentTime + ping2Delay)
-    ping2Osc.stop(ctx.currentTime + ping2Delay + 1.5)
+    // ===== 1) MASSIVE CINEMATIC IMPACT (double-layered) =====
+    // Sub layer
+    const impactSub = ctx.createOscillator()
+    const impactSubG = ctx.createGain()
+    impactSub.type = 'sine'
+    impactSub.frequency.setValueAtTime(45, t)
+    impactSub.frequency.exponentialRampToValueAtTime(18, t + 3.0)
+    impactSubG.gain.setValueAtTime(0.9, t)
+    impactSubG.gain.setValueAtTime(0.9, t + 0.1)
+    impactSubG.gain.exponentialRampToValueAtTime(0.001, t + 3.0)
+    dryWet(impactSub, impactSubG)
+    impactSub.start(t)
+    impactSub.stop(t + 3.0)
 
-    // 7) Low rumble / mechanical hum undertone
-    const rumbleOsc = ctx.createOscillator()
-    const rumbleGain = ctx.createGain()
-    rumbleOsc.type = 'sine'
-    rumbleOsc.frequency.setValueAtTime(40, ctx.currentTime)
-    rumbleGain.gain.setValueAtTime(0, ctx.currentTime)
-    rumbleGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.5)
-    rumbleGain.gain.setValueAtTime(0.15, ctx.currentTime + 4.0)
-    rumbleGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 5.8)
-    rumbleOsc.connect(rumbleGain)
-    rumbleGain.connect(masterGain)
-    rumbleOsc.start(ctx.currentTime)
-    rumbleOsc.stop(ctx.currentTime + 5.8)
+    // Thud noise layer (impact transient)
+    const thudBuf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate)
+    const thudData = thudBuf.getChannelData(0)
+    for (let i = 0; i < thudData.length; i++) {
+      thudData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / thudData.length, 6)
+    }
+    const thudNode = ctx.createBufferSource()
+    thudNode.buffer = thudBuf
+    const thudFilter = ctx.createBiquadFilter()
+    thudFilter.type = 'lowpass'
+    thudFilter.frequency.setValueAtTime(150, t)
+    thudFilter.Q.setValueAtTime(1, t)
+    const thudGain = ctx.createGain()
+    thudGain.gain.setValueAtTime(0.8, t)
+    thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.6)
+    thudNode.connect(thudFilter)
+    dryWet(thudFilter, thudGain)
+    thudNode.start(t)
+    thudNode.stop(t + 0.6)
 
-    // 8) Digital beep sequence (like system boot)
-    const beepTimes = [0.6, 1.4, 2.2, 3.4, 4.2]
-    const beepFreqs = [880, 660, 880, 1100, 1320]
-    beepTimes.forEach((t, i) => {
-      const beepOsc = ctx.createOscillator()
-      const beepGain = ctx.createGain()
-      beepOsc.type = 'square'
-      beepOsc.frequency.setValueAtTime(beepFreqs[i], ctx.currentTime + t)
-      beepGain.gain.setValueAtTime(0.06, ctx.currentTime + t)
-      beepGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.12)
-      beepOsc.connect(beepGain)
-      beepGain.connect(masterGain)
-      beepOsc.start(ctx.currentTime + t)
-      beepOsc.stop(ctx.currentTime + t + 0.15)
+    // ===== 2) HEARTBEAT SUB-BASS THROBS (tension builder) =====
+    const heartbeatTimes = [0.8, 1.4, 2.4, 3.0, 3.8, 4.2]
+    heartbeatTimes.forEach((ht) => {
+      const hb = ctx.createOscillator()
+      const hbG = ctx.createGain()
+      hb.type = 'sine'
+      hb.frequency.setValueAtTime(35, t + ht)
+      hb.frequency.exponentialRampToValueAtTime(22, t + ht + 0.35)
+      hbG.gain.setValueAtTime(0.4, t + ht)
+      hbG.gain.exponentialRampToValueAtTime(0.001, t + ht + 0.4)
+      hb.connect(hbG)
+      hbG.connect(masterGain)
+      hb.start(t + ht)
+      hb.stop(t + ht + 0.45)
     })
 
-    // 9) Final power-up sweep
-    const sweepOsc = ctx.createOscillator()
-    const sweepGain = ctx.createGain()
-    const sweepFilter = ctx.createBiquadFilter()
-    sweepOsc.type = 'sawtooth'
-    sweepOsc.frequency.setValueAtTime(100, ctx.currentTime + 4.5)
-    sweepOsc.frequency.exponentialRampToValueAtTime(2000, ctx.currentTime + 5.5)
-    sweepFilter.type = 'lowpass'
-    sweepFilter.frequency.setValueAtTime(400, ctx.currentTime + 4.5)
-    sweepFilter.frequency.exponentialRampToValueAtTime(4000, ctx.currentTime + 5.5)
-    sweepGain.gain.setValueAtTime(0, ctx.currentTime + 4.5)
-    sweepGain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 5.0)
-    sweepGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 5.8)
-    sweepOsc.connect(sweepFilter)
-    sweepFilter.connect(sweepGain)
-    sweepGain.connect(masterGain)
-    sweepOsc.start(ctx.currentTime + 4.5)
-    sweepOsc.stop(ctx.currentTime + 5.8)
+    // ===== 3) EERIE ATMOSPHERIC PAD (dark minor chord) =====
+    const padFreqs = [65.41, 77.78, 98.0] // C2, Eb2, G2 -- Cm chord
+    padFreqs.forEach((freq, i) => {
+      const pad = ctx.createOscillator()
+      const padG = ctx.createGain()
+      const padF = ctx.createBiquadFilter()
+      pad.type = 'sawtooth'
+      pad.frequency.setValueAtTime(freq, t + 0.4)
+      pad.frequency.linearRampToValueAtTime(freq * 1.02, t + 5.5) // slight detune drift
+      padF.type = 'lowpass'
+      padF.frequency.setValueAtTime(120, t + 0.4)
+      padF.frequency.linearRampToValueAtTime(600 + i * 100, t + 4.0)
+      padF.frequency.linearRampToValueAtTime(80, t + 6.0)
+      padF.Q.setValueAtTime(3, t)
+      padG.gain.setValueAtTime(0, t)
+      padG.gain.linearRampToValueAtTime(0.08, t + 2.0)
+      padG.gain.linearRampToValueAtTime(0.12, t + 4.0)
+      padG.gain.exponentialRampToValueAtTime(0.001, t + 6.0)
+      pad.connect(padF)
+      dryWet(padF, padG)
+      pad.start(t + 0.4)
+      pad.stop(t + 6.0)
+    })
 
-    // Fade master out at end
-    masterGain.gain.setValueAtTime(0.55, ctx.currentTime + 5.0)
-    masterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 6.2)
+    // ===== 4) SHEPARD TONE (ever-rising tension illusion) =====
+    for (let layer = 0; layer < 4; layer++) {
+      const shepard = ctx.createOscillator()
+      const shepG = ctx.createGain()
+      const baseFreq = 55 * Math.pow(2, layer)
+      shepard.type = 'sine'
+      shepard.frequency.setValueAtTime(baseFreq, t + 1.0)
+      shepard.frequency.exponentialRampToValueAtTime(baseFreq * 2, t + 5.5)
+      // Bell curve gain so layers overlap seamlessly
+      const peakGain = layer === 1 || layer === 2 ? 0.06 : 0.025
+      shepG.gain.setValueAtTime(0, t + 1.0)
+      shepG.gain.linearRampToValueAtTime(peakGain, t + 3.0)
+      shepG.gain.linearRampToValueAtTime(0, t + 5.5)
+      shepard.connect(shepG)
+      shepG.connect(masterGain)
+      shepard.start(t + 1.0)
+      shepard.stop(t + 5.5)
+    }
 
-    // Close context after all sounds finish
-    setTimeout(() => ctx.close().catch(() => {}), 7000)
+    // ===== 5) RADIO STATIC WITH VOICE-LIKE FILTERING =====
+    const staticLen = ctx.sampleRate * 5
+    const staticBuf = ctx.createBuffer(1, staticLen, ctx.sampleRate)
+    const staticData = staticBuf.getChannelData(0)
+    for (let i = 0; i < staticLen; i++) {
+      // Gated crackle effect
+      const gate = Math.sin(i / ctx.sampleRate * 12) > 0.3 ? 1 : 0.1
+      staticData[i] = (Math.random() * 2 - 1) * gate
+    }
+    const staticNode = ctx.createBufferSource()
+    staticNode.buffer = staticBuf
+    const staticF1 = ctx.createBiquadFilter()
+    staticF1.type = 'bandpass'
+    staticF1.frequency.setValueAtTime(1800, t)
+    staticF1.frequency.linearRampToValueAtTime(4500, t + 3.0)
+    staticF1.frequency.linearRampToValueAtTime(2000, t + 5.0)
+    staticF1.Q.setValueAtTime(2.5, t)
+    const staticG = ctx.createGain()
+    staticG.gain.setValueAtTime(0, t)
+    staticG.gain.linearRampToValueAtTime(0.04, t + 0.2)
+    staticG.gain.setValueAtTime(0.04, t + 0.8)
+    staticG.gain.linearRampToValueAtTime(0.015, t + 2.0)
+    staticG.gain.linearRampToValueAtTime(0.03, t + 3.5)
+    staticG.gain.exponentialRampToValueAtTime(0.001, t + 5.0)
+    staticNode.connect(staticF1)
+    staticF1.connect(staticG)
+    staticG.connect(masterGain)
+    staticNode.start(t)
+    staticNode.stop(t + 5.0)
 
+    // ===== 6) METALLIC SONAR PINGS (with decay tail) =====
+    const pingTimes = [0.6, 2.2, 4.0]
+    const pingFreqList = [1100, 1480, 1760]
+    pingTimes.forEach((pt, i) => {
+      // Main ping tone
+      const ping = ctx.createOscillator()
+      const pingG = ctx.createGain()
+      ping.type = 'sine'
+      ping.frequency.setValueAtTime(pingFreqList[i], t + pt)
+      ping.frequency.exponentialRampToValueAtTime(pingFreqList[i] * 0.92, t + pt + 2.0)
+      pingG.gain.setValueAtTime(0.3 - i * 0.05, t + pt)
+      pingG.gain.exponentialRampToValueAtTime(0.001, t + pt + 2.5)
+      dryWet(ping, pingG)
+      ping.start(t + pt)
+      ping.stop(t + pt + 2.5)
+
+      // Harmonic overtone
+      const harm = ctx.createOscillator()
+      const harmG = ctx.createGain()
+      harm.type = 'sine'
+      harm.frequency.setValueAtTime(pingFreqList[i] * 2.5, t + pt)
+      harmG.gain.setValueAtTime(0.05, t + pt)
+      harmG.gain.exponentialRampToValueAtTime(0.001, t + pt + 1.0)
+      harm.connect(harmG)
+      harmG.connect(masterGain)
+      harm.start(t + pt)
+      harm.stop(t + pt + 1.0)
+    })
+
+    // ===== 7) DEEP MECHANICAL GROANING HUM =====
+    const groan = ctx.createOscillator()
+    const groanG = ctx.createGain()
+    const groanF = ctx.createBiquadFilter()
+    groan.type = 'sawtooth'
+    groan.frequency.setValueAtTime(28, t)
+    groan.frequency.linearRampToValueAtTime(32, t + 3.0)
+    groan.frequency.linearRampToValueAtTime(25, t + 6.0)
+    groanF.type = 'lowpass'
+    groanF.frequency.setValueAtTime(80, t)
+    groanF.Q.setValueAtTime(5, t)
+    groanG.gain.setValueAtTime(0, t)
+    groanG.gain.linearRampToValueAtTime(0.2, t + 1.0)
+    groanG.gain.setValueAtTime(0.2, t + 4.5)
+    groanG.gain.exponentialRampToValueAtTime(0.001, t + 6.2)
+    groan.connect(groanF)
+    dryWet(groanF, groanG)
+    groan.start(t)
+    groan.stop(t + 6.2)
+
+    // ===== 8) TACTICAL CLICK / TICK SEQUENCE =====
+    const clickTimes = [0.15, 0.5, 0.85, 1.6, 2.4, 3.2, 3.6, 4.4, 5.0]
+    clickTimes.forEach((ct) => {
+      const clickBuf = ctx.createBuffer(1, ctx.sampleRate * 0.015, ctx.sampleRate)
+      const clickD = clickBuf.getChannelData(0)
+      for (let i = 0; i < clickD.length; i++) {
+        clickD[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / clickD.length, 20)
+      }
+      const clickN = ctx.createBufferSource()
+      clickN.buffer = clickBuf
+      const clickG = ctx.createGain()
+      const clickF = ctx.createBiquadFilter()
+      clickF.type = 'highpass'
+      clickF.frequency.setValueAtTime(2000, t)
+      clickG.gain.setValueAtTime(0.25, t + ct)
+      clickG.gain.exponentialRampToValueAtTime(0.001, t + ct + 0.05)
+      clickN.connect(clickF)
+      clickF.connect(clickG)
+      clickG.connect(masterGain)
+      clickN.start(t + ct)
+      clickN.stop(t + ct + 0.05)
+    })
+
+    // ===== 9) ALARM TONE BURST (brief, at title reveal) =====
+    const alarmT = 0.58
+    for (let a = 0; a < 3; a++) {
+      const alarm = ctx.createOscillator()
+      const alarmG = ctx.createGain()
+      alarm.type = 'square'
+      alarm.frequency.setValueAtTime(440, t + alarmT + a * 0.12)
+      alarm.frequency.setValueAtTime(520, t + alarmT + a * 0.12 + 0.04)
+      alarmG.gain.setValueAtTime(0.07, t + alarmT + a * 0.12)
+      alarmG.gain.exponentialRampToValueAtTime(0.001, t + alarmT + a * 0.12 + 0.1)
+      alarm.connect(alarmG)
+      alarmG.connect(masterGain)
+      alarm.start(t + alarmT + a * 0.12)
+      alarm.stop(t + alarmT + a * 0.12 + 0.12)
+    }
+
+    // ===== 10) FINAL POWER-DOWN SWEEP + BASS DROP =====
+    // Reverse sweep (high to low -- feels like systems locking in)
+    const sweep = ctx.createOscillator()
+    const sweepG = ctx.createGain()
+    const sweepF = ctx.createBiquadFilter()
+    sweep.type = 'sawtooth'
+    sweep.frequency.setValueAtTime(3000, t + 4.8)
+    sweep.frequency.exponentialRampToValueAtTime(40, t + 5.8)
+    sweepF.type = 'lowpass'
+    sweepF.frequency.setValueAtTime(5000, t + 4.8)
+    sweepF.frequency.exponentialRampToValueAtTime(100, t + 5.8)
+    sweepG.gain.setValueAtTime(0, t + 4.8)
+    sweepG.gain.linearRampToValueAtTime(0.15, t + 5.1)
+    sweepG.gain.exponentialRampToValueAtTime(0.001, t + 6.0)
+    sweep.connect(sweepF)
+    dryWet(sweepF, sweepG)
+    sweep.start(t + 4.8)
+    sweep.stop(t + 6.0)
+
+    // Final sub bass drop impact
+    const drop = ctx.createOscillator()
+    const dropG = ctx.createGain()
+    drop.type = 'sine'
+    drop.frequency.setValueAtTime(50, t + 5.6)
+    drop.frequency.exponentialRampToValueAtTime(20, t + 6.2)
+    dropG.gain.setValueAtTime(0.6, t + 5.6)
+    dropG.gain.exponentialRampToValueAtTime(0.001, t + 6.2)
+    dryWet(drop, dropG)
+    drop.start(t + 5.6)
+    drop.stop(t + 6.2)
+
+    // ===== 11) BREATHING / WIND ATMOSPHERE =====
+    const windLen = ctx.sampleRate * 6
+    const windBuf = ctx.createBuffer(1, windLen, ctx.sampleRate)
+    const windData = windBuf.getChannelData(0)
+    for (let i = 0; i < windLen; i++) {
+      const env = Math.sin((i / windLen) * Math.PI) // smooth bell curve
+      windData[i] = (Math.random() * 2 - 1) * env
+    }
+    const windNode = ctx.createBufferSource()
+    windNode.buffer = windBuf
+    const windF = ctx.createBiquadFilter()
+    windF.type = 'bandpass'
+    windF.frequency.setValueAtTime(400, t)
+    windF.frequency.linearRampToValueAtTime(800, t + 3.0)
+    windF.frequency.linearRampToValueAtTime(300, t + 6.0)
+    windF.Q.setValueAtTime(0.5, t)
+    const windG = ctx.createGain()
+    windG.gain.setValueAtTime(0.035, t)
+    windNode.connect(windF)
+    windF.connect(windG)
+    windG.connect(masterGain)
+    windNode.start(t)
+    windNode.stop(t + 6.0)
+
+    // ===== MASTER FADE =====
+    masterGain.gain.setValueAtTime(0.7, t + 5.5)
+    masterGain.gain.linearRampToValueAtTime(0, t + 6.5)
+
+    setTimeout(() => ctx.close().catch(() => {}), 7500)
     return ctx
   } catch {
     return null
