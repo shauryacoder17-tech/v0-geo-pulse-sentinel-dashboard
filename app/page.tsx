@@ -2,10 +2,12 @@
 
 import { useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
+import { AnimatePresence, motion } from 'framer-motion'
 import DashboardHeader from '@/components/dashboard/header'
 import LeftSidebar from '@/components/dashboard/left-sidebar'
 import CountryPanel from '@/components/dashboard/country-panel'
 import EventTimeline from '@/components/dashboard/event-timeline'
+import IntroOverlay from '@/components/dashboard/intro-overlay'
 import type { Country, FilterState } from '@/lib/dashboard-data'
 
 const WorldMap = dynamic(() => import('@/components/dashboard/world-map'), {
@@ -21,6 +23,8 @@ const WorldMap = dynamic(() => import('@/components/dashboard/world-map'), {
 })
 
 export default function GeoPulseDashboard() {
+  const [showIntro, setShowIntro] = useState(true)
+  const [dashboardReady, setDashboardReady] = useState(false)
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(null)
   const [filters, setFilters] = useState<FilterState>({
     earthquakes: true,
@@ -40,29 +44,47 @@ export default function GeoPulseDashboard() {
     setSelectedCountry(null)
   }, [])
 
+  const handleIntroComplete = useCallback(() => {
+    setShowIntro(false)
+    setTimeout(() => setDashboardReady(true), 100)
+  }, [])
+
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
-      {/* Top Header */}
-      <DashboardHeader />
+    <>
+      {/* Intro Overlay */}
+      <AnimatePresence>
+        {showIntro && <IntroOverlay onComplete={handleIntroComplete} />}
+      </AnimatePresence>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex min-h-0">
-        {/* Left Sidebar: Filters + Stats */}
-        <LeftSidebar filters={filters} onFiltersChange={setFilters} />
+      {/* Dashboard - always mounted but hidden behind intro */}
+      <motion.div
+        className="h-screen w-screen flex flex-col overflow-hidden bg-background"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: dashboardReady ? 1 : 0 }}
+        transition={{ duration: 1.2, ease: 'easeOut' }}
+      >
+        {/* Top Header */}
+        <DashboardHeader />
 
-        {/* Center: World Map */}
-        <WorldMap
-          onCountrySelect={handleCountrySelect}
-          selectedCountry={selectedCountry}
-          filters={filters}
-        />
+        {/* Main Content Area */}
+        <div className="flex-1 flex min-h-0">
+          {/* Left Sidebar: Filters + Stats */}
+          <LeftSidebar filters={filters} onFiltersChange={setFilters} />
 
-        {/* Right Sidebar: Country Intel */}
-        <CountryPanel country={selectedCountry} onClose={handleClosePanel} />
-      </div>
+          {/* Center: World Map */}
+          <WorldMap
+            onCountrySelect={handleCountrySelect}
+            selectedCountry={selectedCountry}
+            filters={filters}
+          />
 
-      {/* Bottom: Event Timeline */}
-      <EventTimeline />
-    </div>
+          {/* Right Sidebar: Country Intel */}
+          <CountryPanel country={selectedCountry} onClose={handleClosePanel} />
+        </div>
+
+        {/* Bottom: Event Timeline */}
+        <EventTimeline />
+      </motion.div>
+    </>
   )
 }
